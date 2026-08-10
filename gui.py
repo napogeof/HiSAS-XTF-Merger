@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox, ttk
 import threading
 import os
 
-from backend import sort_files_by_timestamp, merge_xtf_files
+from backend import sort_files_by_timestamp, merge_xtf_files, find_max_packet_size
 
 class HiSASMergerApp:
     def __init__(self, root):
@@ -50,17 +50,22 @@ class HiSASMergerApp:
         self.lbl_output = ttk.Label(self.merge_tab, text="No output file selected.", wraplength=400)
         self.lbl_output.grid(row=2, column=1, columnspan=2, padx=5, pady=10, sticky='w')
         
+        # Normalization Option
+        self.var_normalize = tk.BooleanVar(value=True)
+        self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Fix SonarWiz Smearing)", variable=self.var_normalize)
+        self.chk_normalize.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky='w', padx=10)
+        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=3, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=4, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=4, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=5, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=5, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=6, column=0, columnspan=3, sticky='w', padx=5)
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -89,7 +94,12 @@ This effectively removes the temporally overlapping portion at file boundaries w
 The application regenerates the relevant PingNumber and EventNumber sequences across the merged output so that they remain continuous throughout the resulting XTF.
 This avoids discontinuities that may otherwise cause validation or "Time Jump" errors when the merged file is imported into SonarWiz.
 
-4. NAVIGATION AND ACOUSTIC DATA
+4. VARIABLE PACKET SIZE NORMALIZATION
+HiSAS systems often dynamically change the acoustic packet payload sizes during a survey (e.g., from 5844 bytes to 5888 bytes per ping).
+When these differing files are concatenated, SonarWiz's XTF parser loses byte-synchronization and severely corrupts the mosaic (the "smearing" bug).
+If the "Normalize Packet Sizes" option is enabled, the tool scans all files to find the maximum packet size, and then seamlessly zero-pads all smaller packets in the merged output. This tricks SonarWiz into seeing a uniform file without altering any real acoustic data.
+
+5. NAVIGATION AND ACOUSTIC DATA
 The application does not perform spatial interpolation, image mosaicking, pixel blending, or acoustic resampling.
 For retained pings, the original acquisition information is preserved, including:
 * Acoustic samples
@@ -194,7 +204,13 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
         self.root.after(0, gui_update)
 
     def run_merge_thread(self):
-        success, message = merge_xtf_files(self.input_files, self.output_file, progress_callback=self.update_progress)
+        pad_to_size = None
+        if self.var_normalize.get():
+            self.root.after(0, lambda: self.lbl_status.config(text="Pass 1: Scanning files for maximum packet size..."))
+            pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
+            
+        self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
+        success, message = merge_xtf_files(self.input_files, self.output_file, progress_callback=self.update_progress, pad_to_size=pad_to_size)
         
         def finish():
             self.btn_merge.config(state='normal')

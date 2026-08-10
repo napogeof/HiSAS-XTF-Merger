@@ -127,9 +127,14 @@ The original source files are never modified.
 
 ### XTF sequence continuity
 
-The merger regenerates the relevant `PingNumber` and `EventNumber` sequences across the merged output.
+Because overlapping pings are dropped, the ping number and event number sequences would normally have gaps. To prevent "Time Jump" or "Missing Ping" errors during import, the merger completely regenerates the `PingNumber` and `EventNumber` sequence across the final file to ensure strict continuity.
 
-This creates continuous numbering across file boundaries and avoids discontinuities that can result in validation or "Time Jump" errors during SonarWiz import.
+---
+
+### Variable Packet Size Normalization (Fixes SonarWiz Smearing)
+
+Kongsberg HiSAS systems dynamically adjust acoustic packet payload sizes during a survey (e.g., jumping from 5844 bytes to 5888 bytes). When multiple files with differing packet sizes are concatenated, SonarWiz's XTF parser often loses byte-synchronization and severely corrupts the mosaic (resulting in the "smearing" bug).
+By default, the merger scans the input files, identifies the maximum packet size, and **zero-pads** all smaller packets to match that maximum size. This tricks SonarWiz into reading a perfectly uniform file without altering or distorting any real acoustic data.
 
 ---
 

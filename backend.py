@@ -46,10 +46,31 @@ def get_first_timestamp(filepath):
             f.seek(header['pos'] + header['numbytes'])
     return datetime.datetime.max
 
+def find_max_packet_size(file_paths, progress_callback=None):
+    """Scan files to find the maximum packet size (numbytes) across all pings."""
+    max_size = 0
+    total_files = len(file_paths)
+    for i, filepath in enumerate(file_paths):
+        if progress_callback:
+            progress_callback(i, total_files, filepath)
+        try:
+            with open(filepath, 'rb') as f:
+                f.seek(1024)
+                while True:
+                    header = read_packet_header(f)
+                    if not header or header['magic'] != 0xFACE:
+                        break
+                    if header['numbytes'] > max_size:
+                        max_size = header['numbytes']
+                    f.seek(header['pos'] + header['numbytes'])
+        except Exception:
+            pass
+    return max_size
+
 def sort_files_by_timestamp(file_paths):
     return sorted(file_paths, key=get_first_timestamp)
 
-def merge_xtf_files(infiles, outfile, progress_callback=None):
+def merge_xtf_files(infiles, outfile, progress_callback=None, pad_to_size=None):
     if not infiles:
         return False, "No files provided."
         
@@ -57,6 +78,7 @@ def merge_xtf_files(infiles, outfile, progress_callback=None):
     global_event_count = 0
     global_max_time = datetime.datetime.min
     global_dropped_pings = 0
+    global_padded_packets = 0
     total_files = len(infiles)
     
     first_time = None
@@ -106,9 +128,19 @@ def merge_xtf_files(infiles, outfile, progress_callback=None):
                         
                         if write_packet:
                             out_f.seek(0, os.SEEK_END)
-                            in_f.seek(header['pos'])
-                            out_f.write(in_f.read(14))
-                            out_f.write(record_payload)
+                            if pad_to_size and header['numbytes'] < pad_to_size:
+                                padding_len = pad_to_size - header['numbytes']
+                                in_f.seek(header['pos'])
+                                orig_header = bytearray(in_f.read(14))
+                                struct.pack_into('<I', orig_header, 10, pad_to_size)
+                                out_f.write(orig_header)
+                                out_f.write(record_payload)
+                                out_f.write(b'\x00' * padding_len)
+                                global_padded_packets += 1
+                            else:
+                                in_f.seek(header['pos'])
+                                out_f.write(in_f.read(14))
+                                out_f.write(record_payload)
                         
                         in_f.seek(header['pos'] + header['numbytes'])
         
@@ -121,6 +153,8 @@ def merge_xtf_files(infiles, outfile, progress_callback=None):
             f.write(f"Total input files: {total_files}\n")
             f.write(f"Total output sonar pings: {global_ping_count}\n")
             f.write(f"Overlapping pings dropped: {global_dropped_pings}\n")
+            if pad_to_size:
+                f.write(f"Packets zero-padded to uniform size ({pad_to_size} bytes): {global_padded_packets}\n")
             f.write(f"First ping timestamp: {first_time}\n")
             f.write(f"Last ping timestamp: {last_time}\n\n")
             f.write("Files processed in order:\n")
