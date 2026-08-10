@@ -55,17 +55,26 @@ class HiSASMergerApp:
         self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Fix SonarWiz Smearing)", variable=self.var_normalize)
         self.chk_normalize.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky='w', padx=10)
         
+        # Max Time Gap Option
+        frm_gap = ttk.Frame(self.merge_tab)
+        frm_gap.grid(row=4, column=0, columnspan=3, pady=(5, 10), sticky='w', padx=10)
+        
+        ttk.Label(frm_gap, text="Split into new file if time gap exceeds (seconds):").pack(side='left')
+        self.var_max_gap = tk.DoubleVar(value=5.0)
+        self.spin_max_gap = ttk.Spinbox(frm_gap, from_=1.0, to=3600.0, increment=1.0, width=8, textvariable=self.var_max_gap)
+        self.spin_max_gap.pack(side='left', padx=5)
+        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=4, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=5, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=5, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=6, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=6, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=7, column=0, columnspan=3, sticky='w', padx=5)
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -85,7 +94,8 @@ Different pings may therefore retain their original sample counts.
 
 2. TIME ORDERING AND FILE MERGING
 The tool reads the first available timestamp from each file and processes the files in strict chronological order.
-Because Kongsberg AUVs often start a new file before the previous one finishes (to avoid data loss), consecutive files may overlap temporally. The tool preserves all overlapping pings to ensure no geographic data is lost during sharp turns. While this may trigger a "Time Reversal" warning during import, it allows SonarWiz to correctly render and blend the crossing swaths.
+Because Kongsberg AUVs often start a new file before the previous one finishes (to avoid data loss), consecutive files may overlap temporally. The tool preserves all overlapping pings to ensure no geographic data is lost during sharp turns.
+To prevent SonarWiz from stretching acoustic data across completely disjoint survey lines, the tool actively monitors the time gap between files. If a gap exceeds the specified threshold (default 5.0 seconds), the tool will intelligently split the output and create a new XTF file (e.g. `output_1.xtf`, `output_2.xtf`).
 
 3. XTF SEQUENCE CONTINUITY
 The application regenerates the relevant PingNumber and EventNumber sequences across the merged output so that they remain continuous throughout the resulting XTF.
@@ -130,9 +140,9 @@ The application will:
 1. Sort the input files chronologically.
 2. Read the XTF records sequentially.
 3. Preserve the original acoustic payloads.
-4. Remove temporally overlapping pings at file boundaries.
-5. Rebuild continuous ping/event numbering.
-6. Write the resulting continuous XTF.
+4. Intelligently split output files if large time gaps are detected.
+5. Rebuild continuous ping/event numbering per output file.
+6. Write the resulting continuous XTF(s).
 
 4. Processing report
 A processing report will be generated next to the output XTF.
@@ -206,12 +216,15 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             self.root.after(0, lambda: self.lbl_status.config(text="Pass 1: Scanning files for maximum packet size..."))
             pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
             
+        max_gap = self.var_max_gap.get()
+            
         self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
         success, message = merge_xtf_files(
             self.input_files, 
             self.output_file, 
             progress_callback=self.update_progress, 
-            pad_to_size=pad_to_size
+            pad_to_size=pad_to_size,
+            max_gap_seconds=max_gap
         )
         
         def finish():
