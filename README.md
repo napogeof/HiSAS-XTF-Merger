@@ -95,39 +95,21 @@ For example:
 ```text
 File A
 10:00:00 ───────────────── 10:05:00
+### 2. Time Ordering and File Merging
+The merger identifies the earliest timestamp in each XTF file and processes them in strict chronological order. It extracts the raw packets from each file and concatenates them. 
 
-File B
-                    10:04:54 ───────────────── 10:10:00
-                    └── overlap ──┘
-```
+Because Kongsberg AUVs often start a new file slightly before the previous file finishes (to prevent data loss during turns), the files may temporally overlap by a few seconds. The merger **preserves all pings** without deleting any overlapping data. This ensures that no geographic coverage is lost, especially during turns where the swath geometry intersects.
 
-When consecutive files are aggregated, this overlapping acquisition period can result in duplicate coverage and artifacts in the resulting sonar mosaic.
+While this may cause SonarWiz to report a harmless "Time Reversal" warning during import, it allows SonarWiz to naturally blend the overlapping swaths together on the mosaic.
 
-The merger therefore processes files chronologically and enforces temporal continuity.
-
-Once the latest retained timestamp from the preceding file has been established, pings in the subsequent file whose timestamps are equal to or earlier than that timestamp are discarded.
-
-Conceptually:
-
-```text
-File A
-10:00 ───────────────────── 10:05
-                            │
-                            ▼
-File B
-                 10:04:54 ─────────────── 10:10
-                 discarded │ retained ────►
-```
-
-This is **temporal overlap deduplication**, rather than image blending or spatial interpolation.
+---
 
 The original source files are never modified.
 
 ---
 
-### XTF sequence continuity
-
-Because overlapping pings are dropped, the ping number and event number sequences would normally have gaps. To prevent "Time Jump" or "Missing Ping" errors during import, the merger completely regenerates the `PingNumber` and `EventNumber` sequence across the final file to ensure strict continuity.
+### 3. Ping Sequence Reconstruction
+The ping number and event number sequences in the original files will inevitably reset or contain gaps. To prevent "Missing Ping" errors during import, the merger completely regenerates the `PingNumber` and `EventNumber` sequence across the final file (starting from 0 and incrementing by 1 for every single ping) to ensure strict continuity.
 
 ---
 

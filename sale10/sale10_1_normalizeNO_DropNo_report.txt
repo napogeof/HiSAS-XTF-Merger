@@ -1,0 +1,13 @@
+HiSAS Offline XTF Merger - Processing Report
+==================================================
+
+Merged output: C:/Users/napog/Documents/P.A.R.A/1-Projects/HiSAS/sale10/sale10_1_normalizeNO_DropNo.xtf
+Total input files: 2
+Total output sonar pings: 4548
+Overlapping pings dropped: 0
+First ping timestamp: 2026-08-03 17:26:25.130000
+Last ping timestamp: 2026-08-03 17:27:55.990000
+
+Files processed in order:
+  - sasi-upper-20260803-172621-sale10.xtf
+  - sasi-upper-20260803-172659-sale10.xtf

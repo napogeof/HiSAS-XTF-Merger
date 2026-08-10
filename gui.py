@@ -55,22 +55,17 @@ class HiSASMergerApp:
         self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Fix SonarWiz Smearing)", variable=self.var_normalize)
         self.chk_normalize.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky='w', padx=10)
         
-        # Drop Overlap Option
-        self.var_drop_overlap = tk.BooleanVar(value=True)
-        self.chk_drop_overlap = ttk.Checkbutton(self.merge_tab, text="Drop Temporally Overlapping Pings", variable=self.var_drop_overlap)
-        self.chk_drop_overlap.grid(row=4, column=0, columnspan=3, pady=(0, 10), sticky='w', padx=10)
-        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=5, column=0, columnspan=3, pady=10)
+        self.btn_merge.grid(row=4, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=6, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=5, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=7, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=6, column=0, columnspan=3, sticky='w', padx=5)
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -88,12 +83,9 @@ The acoustic payload of each retained ping is preserved exactly as it appears in
 No sample-size normalization or resampling is performed.
 Different pings may therefore retain their original sample counts.
 
-2. TEMPORAL OVERLAP HANDLING
-Consecutive XTF files may contain overlapping acquisition periods. For example, a subsequent file may begin several seconds before the previous file ends.
-When these files are subsequently aggregated in SonarWiz, overlapping coverage can result in duplicate rendering and artifacts such as smearing in the resulting mosaic.
-To avoid this, the application enforces chronological continuity between files.
-Files are processed in chronological order based on their internal XTF timestamps. Once the latest retained ping from the preceding file has been established, any ping in the subsequent file with a timestamp equal to or earlier than that timestamp is discarded.
-This effectively removes the temporally overlapping portion at file boundaries while preserving the first occurrence of each acquisition period.
+2. TIME ORDERING AND FILE MERGING
+The tool reads the first available timestamp from each file and processes the files in strict chronological order.
+Because Kongsberg AUVs often start a new file before the previous one finishes (to avoid data loss), consecutive files may overlap temporally. The tool preserves all overlapping pings to ensure no geographic data is lost during sharp turns. While this may trigger a "Time Reversal" warning during import, it allows SonarWiz to correctly render and blend the crossing swaths.
 
 3. XTF SEQUENCE CONTINUITY
 The application regenerates the relevant PingNumber and EventNumber sequences across the merged output so that they remain continuous throughout the resulting XTF.
@@ -214,15 +206,12 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             self.root.after(0, lambda: self.lbl_status.config(text="Pass 1: Scanning files for maximum packet size..."))
             pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
             
-        drop_overlap = self.var_drop_overlap.get()
-            
         self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
         success, message = merge_xtf_files(
             self.input_files, 
             self.output_file, 
             progress_callback=self.update_progress, 
-            pad_to_size=pad_to_size,
-            drop_overlap=drop_overlap
+            pad_to_size=pad_to_size
         )
         
         def finish():
