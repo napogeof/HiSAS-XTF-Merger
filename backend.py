@@ -70,7 +70,7 @@ def find_max_packet_size(file_paths, progress_callback=None):
 def sort_files_by_timestamp(file_paths):
     return sorted(file_paths, key=get_first_timestamp)
 
-def merge_xtf_files(infiles, outfile, progress_callback=None, pad_to_size=None):
+def merge_xtf_files(infiles, outfile, progress_callback=None, pad_to_size=None, drop_overlap=True):
     if not infiles:
         return False, "No files provided."
         
@@ -111,11 +111,12 @@ def merge_xtf_files(infiles, outfile, progress_callback=None, pad_to_size=None):
                         if header['type'] == 0 and len(record_payload) >= 256 - 14:
                             dt = extract_packet_timestamp(record_payload)
                             if dt:
-                                if dt <= global_max_time:
+                                if drop_overlap and dt <= global_max_time:
                                     write_packet = False
                                     global_dropped_pings += 1
                                 else:
-                                    global_max_time = dt
+                                    if dt > global_max_time:
+                                        global_max_time = dt
                                     if first_time is None:
                                         first_time = dt
                                     last_time = dt

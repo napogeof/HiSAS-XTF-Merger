@@ -55,17 +55,22 @@ class HiSASMergerApp:
         self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Fix SonarWiz Smearing)", variable=self.var_normalize)
         self.chk_normalize.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky='w', padx=10)
         
+        # Drop Overlap Option
+        self.var_drop_overlap = tk.BooleanVar(value=True)
+        self.chk_drop_overlap = ttk.Checkbutton(self.merge_tab, text="Drop Temporally Overlapping Pings", variable=self.var_drop_overlap)
+        self.chk_drop_overlap.grid(row=4, column=0, columnspan=3, pady=(0, 10), sticky='w', padx=10)
+        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=4, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=5, column=0, columnspan=3, pady=10)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=5, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=6, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=6, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=7, column=0, columnspan=3, sticky='w', padx=5)
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -209,8 +214,16 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             self.root.after(0, lambda: self.lbl_status.config(text="Pass 1: Scanning files for maximum packet size..."))
             pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
             
+        drop_overlap = self.var_drop_overlap.get()
+            
         self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
-        success, message = merge_xtf_files(self.input_files, self.output_file, progress_callback=self.update_progress, pad_to_size=pad_to_size)
+        success, message = merge_xtf_files(
+            self.input_files, 
+            self.output_file, 
+            progress_callback=self.update_progress, 
+            pad_to_size=pad_to_size,
+            drop_overlap=drop_overlap
+        )
         
         def finish():
             self.btn_merge.config(state='normal')
