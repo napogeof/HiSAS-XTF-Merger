@@ -232,10 +232,9 @@ The application will:
 1. Sort the input files chronologically.
 2. Read the XTF records sequentially.
 3. Preserve the original acoustic payloads.
-4. Preserve the original sample counts.
-5. Remove temporally overlapping pings at file boundaries.
-6. Regenerate continuous ping/event numbering.
-7. Write the resulting continuous XTF.
+4. Intelligently split output files if large time gaps are detected.
+5. Regenerate continuous ping/event numbering per output file.
+6. Write the resulting continuous XTF(s).
 
 ---
 
@@ -247,15 +246,11 @@ The report provides a record of the merge operation and should be retained with 
 
 Typical information includes:
 
-* Input files
-* Processing order
-* Number of input pings
+* Number of merged files generated
+* Input files included per output
 * Number of retained pings
-* Number of discarded overlapping pings
-* First and last timestamps
-* Sample-count statistics
-* Detected channels
-* Warnings or processing errors
+* Number of zero-padded packets (if normalization enabled)
+* First and last timestamps for each file
 
 ---
 
@@ -291,13 +286,11 @@ It can then be imported directly into SonarWiz.
 
 The application does not modify the original input files.
 
-When overlap handling is disabled or no overlapping records are present, the merger is designed to preserve the acoustic payloads of the source pings exactly.
-
-When overlap handling is enabled, pings falling within an already-retained temporal interval are intentionally discarded.
+The merger is designed to preserve 100% of the acoustic payloads and pings from the source data. Overlapping pings are intentionally preserved to ensure no geometric "connective tissue" is lost during sharp AUV turns.
 
 Therefore, the application should be understood as:
 
-> **Lossless with respect to retained XTF records, with intentional temporal deduplication at file boundaries.**
+> **Completely lossless with respect to XTF records, with zero acoustic data dropped or deduplicated.**
 
 The original acquisition files should always be retained as the authoritative source dataset.
 
@@ -351,7 +344,7 @@ The development approach prioritizes:
 1. Preservation of the original acoustic acquisition.
 2. Avoidance of unnecessary resampling.
 3. Preservation of navigation and metadata.
-4. Removal of temporal duplication at segmented file boundaries.
+4. Intelligent splitting of disjoint survey lines.
 5. Direct compatibility with downstream XTF processing workflows.
 
 The software was developed with AI-assisted programming using Google DeepMind Antigravity.
