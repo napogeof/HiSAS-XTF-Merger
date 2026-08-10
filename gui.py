@@ -137,7 +137,8 @@ This application does NOT modify the original XTF files.
 Input files remain unchanged.
 The merged XTF should be considered a derived processing product and should be retained alongside the original acquisition files.
 
-developed by Daniel (Napo) Arráiz @nap0x
+Developed by Daniel (Napo) Arráiz @nap0x
+Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
 """
         txt = tk.Text(self.readme_tab, wrap='word', padx=10, pady=10)
         txt.insert('1.0', readme_text)
