@@ -1,2 +1,395 @@
-# HiSAS-XTF-Merger
-Offline tool for merging segmented HiSAS XTF files into continuous survey lines without resampling or rasterizing the raw acoustic data.
+# HiSAS Offline XTF Line Merger
+
+**Merge hundreds of short HiSAS XTF files into continuous survey lines — without resampling or rasterizing the raw acoustic data.**
+
+Developed by **Daniel (Napo) Arráiz @nap0x**, AI-assisted development
+
+---
+
+## The problem
+
+AUV-based HiSAS surveys can produce a very large number of short XTF files.
+
+During acquisition, relatively small changes in AUV heading can cause the system to segment the recording. A single survey line may therefore consist of hundreds or even thousands of files, sometimes only ~70 m long.
+
+For example:
+
+```text
+LINE_001
+├── 001.xtf
+├── 002.xtf
+├── 003.xtf
+├── 004.xtf
+├── ...
+└── 847.xtf
+```
+
+Processing these files individually in SonarWiz can become cumbersome.
+
+SonarWiz provides aggregation tools for combining the resulting products, but when consecutive files contain overlapping acquisition periods, the resulting mosaic can contain duplicate coverage and artifacts such as stretching or smearing.
+
+This application addresses the problem **before SonarWiz processing**, directly at the raw XTF level.
+
+---
+
+# What it does
+
+The HiSAS Offline XTF Line Merger combines multiple segmented XTF files belonging to the same survey line into a single continuous XTF file.
+
+```text
+847 short XTF files
+        │
+        ▼
+┌───────────────────────┐
+│  HiSAS XTF Line Merger│
+└───────────────────────┘
+        │
+        ▼
+1 continuous XTF file
+        │
+        ▼
+      SonarWiz
+```
+
+The application operates directly on the XTF records.
+
+It does **not** create an image mosaic.
+
+It does **not** rasterize the sonar data.
+
+It does **not** resample the acoustic signal.
+
+---
+
+# Key features
+
+### Lossless acoustic payload preservation
+
+The application preserves the original acoustic payload of every retained ping.
+
+It does not force all pings to have the same number of samples.
+
+For example, if the source data contains:
+
+```text
+Ping 001 → 1392 samples
+Ping 002 → 1387 samples
+Ping 003 → 1401 samples
+Ping 004 → 1384 samples
+```
+
+the merged XTF retains those original sample counts.
+
+No automatic normalization to a fixed sample count is performed.
+
+This is intentional: the goal is to preserve the original acquisition rather than reproduce undocumented processing performed by downstream software.
+
+---
+
+### Temporal overlap handling
+
+Segmented AUV files may overlap in time.
+
+For example:
+
+```text
+File A
+10:00:00 ───────────────── 10:05:00
+
+File B
+                    10:04:54 ───────────────── 10:10:00
+                    └── overlap ──┘
+```
+
+When consecutive files are aggregated, this overlapping acquisition period can result in duplicate coverage and artifacts in the resulting sonar mosaic.
+
+The merger therefore processes files chronologically and enforces temporal continuity.
+
+Once the latest retained timestamp from the preceding file has been established, pings in the subsequent file whose timestamps are equal to or earlier than that timestamp are discarded.
+
+Conceptually:
+
+```text
+File A
+10:00 ───────────────────── 10:05
+                            │
+                            ▼
+File B
+                 10:04:54 ─────────────── 10:10
+                 discarded │ retained ────►
+```
+
+This is **temporal overlap deduplication**, rather than image blending or spatial interpolation.
+
+The original source files are never modified.
+
+---
+
+### XTF sequence continuity
+
+The merger regenerates the relevant `PingNumber` and `EventNumber` sequences across the merged output.
+
+This creates continuous numbering across file boundaries and avoids discontinuities that can result in validation or "Time Jump" errors during SonarWiz import.
+
+---
+
+### Navigation preservation
+
+The application does not perform navigation correction or interpolation.
+
+For retained pings, the original available navigation and acquisition metadata are preserved, including information such as:
+
+* Timestamp
+* Position
+* Heading
+* Attitude
+* Altitude/depth
+* Channel information
+* Acoustic samples
+* Sample count
+
+The purpose of the application is to reorganize the acquisition into a continuous XTF, **not to reinterpret the survey**.
+
+---
+
+# What this software does NOT do
+
+This is a file-level XTF utility, not a sonar processing or mosaicking application.
+
+It does not perform:
+
+* Acoustic image mosaicking
+* Pixel blending
+* Image averaging
+* Spatial interpolation
+* Acoustic resampling
+* Slant-range correction
+* Navigation correction
+* Radiometric normalization
+* Sonar image enhancement
+* Bottom tracking
+* Georeferencing of raster products
+
+The output remains an XTF intended for subsequent processing in software such as SonarWiz.
+
+---
+
+# Sample count and SonarWiz
+
+A common workflow with these HiSAS datasets is to configure SonarWiz to use a fixed sample count during import.
+
+For example, raw files may contain approximately:
+
+```text
+1380–1400 samples/ping
+```
+
+while the SonarWiz import may be configured for:
+
+```text
+1290 samples/ping
+```
+
+The exact operation performed internally by SonarWiz when applying this setting is not assumed by this application.
+
+It may involve truncation, resampling, modification of sample interval, range calculations, or another internal operation.
+
+Therefore, **the XTF merger does not reproduce this behavior**.
+
+Instead, it preserves the original sample count and acoustic payload contained in each source ping.
+
+If a future workflow demonstrates that a fixed sample count is required for a specific SonarWiz configuration, sample normalization may be implemented as a separate, explicitly controlled processing option.
+
+---
+
+# Workflow
+
+## 1. Select XTF files
+
+Open the **Merge XTF Files** tab.
+
+Click:
+
+**Select XTF Files**
+
+and select all XTF files belonging to a single survey line.
+
+The application automatically sorts the selected files chronologically using their internal XTF timestamps.
+
+---
+
+## 2. Select output file
+
+Click:
+
+**Select Output File**
+
+and specify the location and name of the merged XTF.
+
+For example:
+
+```text
+LINE_001_MERGED.XTF
+```
+
+---
+
+## 3. Merge
+
+Click:
+
+**MERGE FILES**
+
+The application will:
+
+1. Sort the input files chronologically.
+2. Read the XTF records sequentially.
+3. Preserve the original acoustic payloads.
+4. Preserve the original sample counts.
+5. Remove temporally overlapping pings at file boundaries.
+6. Regenerate continuous ping/event numbering.
+7. Write the resulting continuous XTF.
+
+---
+
+## 4. Processing report
+
+A processing report is generated next to the output XTF.
+
+The report provides a record of the merge operation and should be retained with the processed dataset.
+
+Typical information includes:
+
+* Input files
+* Processing order
+* Number of input pings
+* Number of retained pings
+* Number of discarded overlapping pings
+* First and last timestamps
+* Sample-count statistics
+* Detected channels
+* Warnings or processing errors
+
+---
+
+# Example
+
+### Before
+
+A single AUV survey line:
+
+```text
+LINE_034_001.XTF
+LINE_034_002.XTF
+LINE_034_003.XTF
+...
+LINE_034_624.XTF
+```
+
+Some files overlap temporally because of acquisition segmentation.
+
+### After
+
+```text
+LINE_034_MERGED.XTF
+```
+
+The resulting file contains the retained ping records as one continuous XTF stream.
+
+It can then be imported directly into SonarWiz.
+
+---
+
+# Data integrity
+
+The application does not modify the original input files.
+
+When overlap handling is disabled or no overlapping records are present, the merger is designed to preserve the acoustic payloads of the source pings exactly.
+
+When overlap handling is enabled, pings falling within an already-retained temporal interval are intentionally discarded.
+
+Therefore, the application should be understood as:
+
+> **Lossless with respect to retained XTF records, with intentional temporal deduplication at file boundaries.**
+
+The original acquisition files should always be retained as the authoritative source dataset.
+
+---
+
+# Recommended workflow
+
+```text
+             RAW ACQUISITION
+                    │
+                    ▼
+        Hundreds of short XTF files
+                    │
+                    ▼
+        ┌──────────────────────┐
+        │ HiSAS XTF Line Merger│
+        └──────────────────────┘
+                    │
+                    ▼
+        Continuous XTF per line
+                    │
+                    ▼
+                SonarWiz
+                    │
+                    ▼
+          Normal processing
+          / interpretation
+```
+
+The merger is intended to reduce the number of input files **before** sonar processing while keeping the raw acoustic acquisition intact.
+
+---
+
+# Requirements
+
+* Windows
+* HiSAS XTF files
+* No internet connection required
+* No cloud processing required
+
+The application is designed to operate completely offline.
+
+---
+
+# Development
+
+This project was developed to address a practical processing problem encountered with AUV-based HiSAS surveys.
+
+The development approach prioritizes:
+
+1. Preservation of the original acoustic acquisition.
+2. Avoidance of unnecessary resampling.
+3. Preservation of navigation and metadata.
+4. Removal of temporal duplication at segmented file boundaries.
+5. Direct compatibility with downstream XTF processing workflows.
+
+The software was developed with AI-assisted programming using Google DeepMind Antigravity.
+
+---
+
+# Feedback and contributions
+
+If you encounter a HiSAS/XTF dataset that behaves differently from the datasets used during development, please open an issue and provide as much information as possible about:
+
+* HiSAS system/configuration
+* XTF characteristics
+* Number of files
+* Sample counts
+* SonarWiz version
+* Error messages
+* Processing behavior
+* Whether the source files can be shared
+
+Do **not** upload proprietary survey data unless you have permission to distribute it.
+
+---
+
+# License
+
+MIT License
+
+See `LICENSE` for details.

@@ -1,0 +1,19 @@
+# Data files
+*.xtf
+sale30/
+
+# Repositories and clones
+hisas2040-tools/
+
+# PyInstaller build files
+build/
+dist/
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Test and prototype scripts
+prototype.py
+prototype_merger.py
