@@ -164,9 +164,10 @@ The output remains an XTF intended for subsequent processing in software such as
 # Sample count and SonarWiz
 
 A common workflow with these HiSAS datasets is to configure SonarWiz to use a fixed sample count during import.
+```
 
 For example, raw files may contain approximately:
-```
+
 ```text
 1380–1400 samples/ping
 ```
