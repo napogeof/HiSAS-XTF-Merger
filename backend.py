@@ -27,8 +27,18 @@ def extract_packet_timestamp(record_payload):
     except Exception:
         return None
 
-def get_first_timestamp(filepath):
-    """Scan file to find the first valid SONAR packet timestamp for sorting."""
+def extract_packet_heading(record_payload):
+    try:
+        # XTF Heading is a float at offset 88 in the ping header (offset 74 in payload)
+        heading = struct.unpack_from('<f', record_payload, 74)[0]
+        return heading
+    except Exception:
+        return None
+
+def get_file_metadata(filepath):
+    """Scan file to find the first valid SONAR packet timestamp and heading."""
+    first_dt = datetime.datetime.max
+    first_heading = None
     with open(filepath, 'rb') as f:
         f.seek(1024)  # skip file header
         while True:
@@ -40,11 +50,22 @@ def get_first_timestamp(filepath):
             payload = f.read(header['numbytes'] - 14)
             if header['type'] == 0 and len(payload) >= 256 - 14:
                 dt = extract_packet_timestamp(payload)
-                if dt:
-                    return dt
+                if dt and first_dt == datetime.datetime.max:
+                    first_dt = dt
+                
+                heading = extract_packet_heading(payload)
+                if heading is not None and first_heading is None:
+                    first_heading = heading
+                    
+                if first_dt != datetime.datetime.max and first_heading is not None:
+                    break
             
             f.seek(header['pos'] + header['numbytes'])
-    return datetime.datetime.max
+    return first_dt, first_heading
+
+def get_first_timestamp(filepath):
+    dt, _ = get_file_metadata(filepath)
+    return dt
 
 def find_max_packet_size(file_paths, progress_callback=None):
     """Scan files to find the maximum packet size (numbytes) across all pings."""
@@ -70,7 +91,7 @@ def find_max_packet_size(file_paths, progress_callback=None):
 def sort_files_by_timestamp(file_paths):
     return sorted(file_paths, key=get_first_timestamp)
 
-def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0):
+def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0, max_heading_gap=0.1):
     if not infiles:
         return False, "No files provided."
         
@@ -112,6 +133,8 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
         current_out_path = get_out_path(file_index)
         out_f = open(current_out_path, 'wb')
         
+        previous_heading = None
+        
         for i, infile in enumerate(infiles):
             if progress_callback:
                 progress_callback(i, total_files, infile)
@@ -119,32 +142,47 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
             with open(infile, 'rb') as in_f:
                 file_header = in_f.read(1024)
                 
-                # Check for time gap
-                current_first_time = get_first_timestamp(infile)
+                # Check for time gap and heading gap
+                current_first_time, current_heading = get_file_metadata(infile)
                 
-                if i > 0 and last_time is not None and current_first_time != datetime.datetime.max:
-                    gap = (current_first_time - last_time).total_seconds()
-                    if gap > max_gap_seconds:
-                        # Gap detected! Close current file and start a new one.
-                        close_current_file()
-                        file_index += 1
-                        
-                        global_ping_count = 0
-                        global_event_count = 0
-                        global_max_time = datetime.datetime.min
-                        global_padded_packets = 0
-                        first_time = None
-                        last_time = None
-                        current_infiles = []
-                        
-                        current_out_path = get_out_path(file_index)
-                        out_f = open(current_out_path, 'wb')
+                split_reason = None
                 
+                if i > 0:
+                    if last_time is not None and current_first_time != datetime.datetime.max:
+                        gap_sec = (current_first_time - last_time).total_seconds()
+                        if gap_sec > max_gap_seconds:
+                            split_reason = "time"
+                            
+                    if previous_heading is not None and current_heading is not None:
+                        # Shortest angular difference between two headings
+                        heading_diff = abs((current_heading - previous_heading + 180) % 360 - 180)
+                        if heading_diff > max_heading_gap:
+                            split_reason = "heading"
+
+                if split_reason:
+                    # Gap detected! Close current file and start a new one.
+                    close_current_file()
+                    file_index += 1
+                    
+                    global_ping_count = 0
+                    global_event_count = 0
+                    global_max_time = datetime.datetime.min
+                    global_padded_packets = 0
+                    first_time = None
+                    last_time = None
+                    current_infiles = []
+                    
+                    current_out_path = get_out_path(file_index)
+                    out_f = open(current_out_path, 'wb')
+                
+                if current_heading is not None:
+                    previous_heading = current_heading
+
                 # Write file header if this is the first file in the CURRENT output file
                 if len(current_infiles) == 0:
                     out_f.write(file_header)
                     
-                current_infiles.append(os.path.basename(infile))
+                current_infiles.append({'name': os.path.basename(infile), 'heading': current_heading})
                 
                 in_f.seek(1024)
                 while True:
@@ -210,7 +248,8 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                 f.write(f"  Last ping timestamp: {gen['last']}\n")
                 f.write("  Input files included:\n")
                 for src in gen['infiles']:
-                    f.write(f"    - {src}\n")
+                    h_str = f"{src['heading']:.2f}°" if src['heading'] is not None else "Unknown"
+                    f.write(f"    - {src['name']} (Heading: {h_str})\n")
                 f.write("\n")
         
         return True, f"Success! Generated {len(generated_files)} files."

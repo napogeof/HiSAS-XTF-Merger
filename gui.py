@@ -57,24 +57,33 @@ class HiSASMergerApp:
         
         # Max Time Gap Option
         frm_gap = ttk.Frame(self.merge_tab)
-        frm_gap.grid(row=4, column=0, columnspan=3, pady=(5, 10), sticky='w', padx=10)
+        frm_gap.grid(row=4, column=0, columnspan=3, pady=(5, 0), sticky='w', padx=10)
         
         ttk.Label(frm_gap, text="Split into new file if time gap exceeds (seconds):").pack(side='left')
         self.var_max_gap = tk.DoubleVar(value=5.0)
         self.spin_max_gap = ttk.Spinbox(frm_gap, from_=1.0, to=3600.0, increment=1.0, width=8, textvariable=self.var_max_gap)
         self.spin_max_gap.pack(side='left', padx=5)
         
+        # Max Heading Change Option
+        frm_heading = ttk.Frame(self.merge_tab)
+        frm_heading.grid(row=5, column=0, columnspan=3, pady=(5, 10), sticky='w', padx=10)
+        
+        ttk.Label(frm_heading, text="Split into new file if heading changes by > (degrees):").pack(side='left')
+        self.var_max_heading = tk.DoubleVar(value=0.1)
+        self.spin_max_heading = ttk.Spinbox(frm_heading, from_=0.01, to=360.0, increment=0.01, width=8, textvariable=self.var_max_heading)
+        self.spin_max_heading.pack(side='left', padx=5)
+        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=5, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=6, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=6, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=7, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=7, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=8, column=0, columnspan=3, sticky='w', padx=5)
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -92,16 +101,20 @@ The acoustic payload of each retained ping is preserved exactly as it appears in
 No sample-size normalization or resampling is performed.
 Different pings may therefore retain their original sample counts.
 
-2. TIME ORDERING AND FILE MERGING
-The tool reads the first available timestamp from each file and processes the files in strict chronological order.
-Because Kongsberg AUVs often start a new file before the previous one finishes (to avoid data loss), consecutive files may overlap temporally. The tool preserves all overlapping pings to ensure no geographic data is lost during sharp turns.
-To prevent SonarWiz from stretching acoustic data across completely disjoint survey lines, the tool actively monitors the time gap between files. If a gap exceeds the specified threshold (default 5.0 seconds), the tool will intelligently split the output and create a new XTF file (e.g. `output_1.xtf`, `output_2.xtf`).
+2. TIME ORDERING AND FILE SPLITTING
+The tool reads the first available timestamp from each file and processes them in chronological order. Consecutive files often overlap temporally during AUV turns to prevent data loss. The tool preserves 100% of these overlapping pings.
+However, to prevent SonarWiz from stretching acoustic data across completely disjoint survey lines, the tool monitors the time gap between files. If a gap exceeds the specified threshold (e.g., 5.0s), the tool splits the output and starts a new file.
 
-3. XTF SEQUENCE CONTINUITY
-The application regenerates the relevant PingNumber and EventNumber sequences across the merged output so that they remain continuous throughout the resulting XTF.
-This avoids discontinuities that may otherwise cause validation or "Time Jump" errors when the merged file is imported into SonarWiz.
+3. HEADING-BASED SPLITTING (SAS GEOMETRY PRESERVATION)
+Unlike traditional Side Scan Sonar (SSS), Synthetic Aperture Sonar (SAS) imagery is already perfectly orthorectified into rectangular image blocks. To prevent SonarWiz from attempting to "curve" these blocks (which warps the image and duplicates targets), the Kongsberg HiSAS system locks a single constant heading for each generated XTF file.
+If you merge two files with different headings, SonarWiz sees a sudden step-change in heading and violently twists the rectangles together, duplicating targets.
+To prevent this, the tool monitors the heading of each file. If the heading changes by more than the specified threshold (default 0.1 degrees), the tool intelligently splits the output.
+A target 200m away will shift ~35cm per 0.1 degree of heading change. Set this threshold based on your acceptable positioning error.
 
-4. VARIABLE PACKET SIZE NORMALIZATION
+4. XTF SEQUENCE CONTINUITY
+The application regenerates the relevant PingNumber and EventNumber sequences per output file so that they remain continuous.
+
+5. VARIABLE PACKET SIZE NORMALIZATION
 HiSAS systems often dynamically change the acoustic packet payload sizes during a survey (e.g., from 5844 bytes to 5888 bytes per ping).
 When these differing files are concatenated, SonarWiz's XTF parser loses byte-synchronization and severely corrupts the mosaic (the "smearing" bug).
 If the "Normalize Packet Sizes" option is enabled, the tool scans all files to find the maximum packet size, and then seamlessly zero-pads all smaller packets in the merged output. This tricks SonarWiz into seeing a uniform file without altering any real acoustic data.
@@ -217,6 +230,7 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
             
         max_gap = self.var_max_gap.get()
+        max_heading = self.var_max_heading.get()
             
         self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
         success, message = merge_xtf_files(
@@ -224,7 +238,8 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             self.output_file, 
             progress_callback=self.update_progress, 
             pad_to_size=pad_to_size,
-            max_gap_seconds=max_gap
+            max_gap_seconds=max_gap,
+            max_heading_gap=max_heading
         )
         
         def finish():
