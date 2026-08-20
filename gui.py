@@ -106,8 +106,8 @@ The tool reads the first available timestamp from each file and processes them i
 However, to prevent SonarWiz from stretching acoustic data across completely disjoint survey lines, the tool monitors the time gap between files. If a gap exceeds the specified threshold (e.g., 5.0s), the tool splits the output and starts a new file.
 
 3. HEADING-BASED SPLITTING (SAS GEOMETRY PRESERVATION)
-Unlike traditional Side Scan Sonar (SSS), Synthetic Aperture Sonar (SAS) imagery is already perfectly orthorectified into rectangular image blocks. To prevent SonarWiz from attempting to "curve" these blocks (which warps the image and duplicates targets), the Kongsberg HiSAS system locks a single constant heading for each generated XTF file.
-If you merge two files with different headings, SonarWiz sees a sudden step-change in heading and violently twists the rectangles together, duplicating targets.
+Unlike traditional Side Scan Sonar (SSS), Synthetic Aperture Sonar (SAS) imagery is deeply processed into orthorectified rectangular image blocks. To preserve the geometric integrity of these pre-rendered blocks, the Kongsberg SAS processor establishes a single mean reference heading for the entire segment. When exported to XTF, this constant heading is locked for the entire file.
+If you merge two files with different locked headings, downstream software like SonarWiz sees a sudden step-change in heading and violently twists the rectangles together, duplicating targets.
 To prevent this, the tool monitors the heading of each file. If the heading changes by more than the specified threshold (default 0.1 degrees), the tool intelligently splits the output.
 A target 200m away will shift ~35cm per 0.1 degree of heading change. Set this threshold based on your acceptable positioning error.
 
