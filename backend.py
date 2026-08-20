@@ -29,8 +29,9 @@ def extract_packet_timestamp(record_payload):
 
 def extract_packet_heading(record_payload):
     try:
-        # XTF Heading is a float at offset 88 in the ping header (offset 74 in payload)
-        heading = struct.unpack_from('<f', record_payload, 74)[0]
+        # Kongsberg hides the locked SAS heading in the 'Yaw' field!
+        # XTF 'Yaw' is a float at offset 108 in the ping header (offset 94 in payload)
+        heading = struct.unpack_from('<f', record_payload, 94)[0]
         return heading
     except Exception:
         return None
