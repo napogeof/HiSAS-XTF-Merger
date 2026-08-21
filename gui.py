@@ -52,7 +52,7 @@ class HiSASMergerApp:
         
         # Normalization Option
         self.var_normalize = tk.BooleanVar(value=True)
-        self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Fix SonarWiz Smearing)", variable=self.var_normalize)
+        self.chk_normalize = ttk.Checkbutton(self.merge_tab, text="Normalize Packet Sizes (Prevent Parser Desynchronization)", variable=self.var_normalize)
         self.chk_normalize.grid(row=3, column=0, columnspan=3, pady=(10, 0), sticky='w', padx=10)
         
         # Max Time Gap Option
@@ -66,24 +66,54 @@ class HiSASMergerApp:
         
         # Max Heading Change Option
         frm_heading = ttk.Frame(self.merge_tab)
-        frm_heading.grid(row=5, column=0, columnspan=3, pady=(5, 10), sticky='w', padx=10)
+        frm_heading.grid(row=5, column=0, columnspan=3, pady=(5, 0), sticky='w', padx=10)
         
         ttk.Label(frm_heading, text="Split into new file if heading changes by > (degrees):").pack(side='left')
         self.var_max_heading = tk.DoubleVar(value=0.1)
         self.spin_max_heading = ttk.Spinbox(frm_heading, from_=0.01, to=360.0, increment=0.01, width=8, textvariable=self.var_max_heading)
         self.spin_max_heading.pack(side='left', padx=5)
         
+        # Survey Swath Range
+        frm_range = ttk.Frame(self.merge_tab)
+        frm_range.grid(row=6, column=0, columnspan=3, pady=(5, 0), sticky='w', padx=10)
+        
+        ttk.Label(frm_range, text="Survey Swath Max Range (m):").pack(side='left')
+        self.var_range = tk.DoubleVar(value=200.0)
+        self.spin_range = ttk.Spinbox(frm_range, from_=10.0, to=1000.0, increment=10.0, width=8, textvariable=self.var_range)
+        self.spin_range.pack(side='left', padx=5)
+        
+        # Live Error Calculation Label
+        self.lbl_error = ttk.Label(self.merge_tab, text="", foreground="gray")
+        self.lbl_error.grid(row=7, column=0, columnspan=3, pady=(2, 10), sticky='w', padx=10)
+        
+        # Bind traces to update the live error label
+        self.var_max_heading.trace_add("write", self.update_error_label)
+        self.var_range.trace_add("write", self.update_error_label)
+        
+        # Initialize error label
+        self.update_error_label()
+        
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=6, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=8, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=7, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=9, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=8, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=10, column=0, columnspan=3, sticky='w', padx=5)
+
+    def update_error_label(self, *args):
+        try:
+            heading = self.var_max_heading.get()
+            rng = self.var_range.get()
+            import math
+            error = rng * math.sin(math.radians(heading))
+            self.lbl_error.config(text=f"Max target displacement error prevented at edge of swath: ~{error:.2f} m")
+        except Exception:
+            self.lbl_error.config(text="Invalid input for error calculation")
 
     def setup_methodology_tab(self):
         procedure_text = """HiSAS Offline XTF Line Merger
@@ -116,8 +146,8 @@ The application regenerates the relevant PingNumber and EventNumber sequences pe
 
 5. VARIABLE PACKET SIZE NORMALIZATION
 HiSAS systems often dynamically change the acoustic packet payload sizes during a survey (e.g., from 5844 bytes to 5888 bytes per ping).
-When these differing files are concatenated, SonarWiz's XTF parser loses byte-synchronization and severely corrupts the mosaic (the "smearing" bug).
-If the "Normalize Packet Sizes" option is enabled, the tool scans all files to find the maximum packet size, and then seamlessly zero-pads all smaller packets in the merged output. This tricks SonarWiz into seeing a uniform file without altering any real acoustic data.
+When these differing files are concatenated, downstream XTF parsers lose byte-synchronization and severely corrupt the mosaic.
+If the "Normalize Packet Sizes" option is enabled, the tool scans all files to find the maximum packet size, and then seamlessly zero-pads all smaller packets in the merged output. This tricks parsers into seeing a uniform file without altering any real acoustic data.
 
 5. NAVIGATION AND ACOUSTIC DATA
 The application does not perform spatial interpolation, image mosaicking, pixel blending, or acoustic resampling.
@@ -231,6 +261,7 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             
         max_gap = self.var_max_gap.get()
         max_heading = self.var_max_heading.get()
+        survey_rng = self.var_range.get()
             
         self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
         success, message = merge_xtf_files(
@@ -239,7 +270,8 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             progress_callback=self.update_progress, 
             pad_to_size=pad_to_size,
             max_gap_seconds=max_gap,
-            max_heading_gap=max_heading
+            max_heading_gap=max_heading,
+            survey_range=survey_rng
         )
         
         def finish():

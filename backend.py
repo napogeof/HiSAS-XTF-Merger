@@ -92,7 +92,7 @@ def find_max_packet_size(file_paths, progress_callback=None):
 def sort_files_by_timestamp(file_paths):
     return sorted(file_paths, key=get_first_timestamp)
 
-def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0, max_heading_gap=0.1):
+def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0, max_heading_gap=0.1, survey_range=200.0):
     if not infiles:
         return False, "No files provided."
         
@@ -112,6 +112,7 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
     current_infiles = []
     
     generated_files = []
+    current_split_reason = None
     
     def get_out_path(idx):
         return f"{base}_{idx}{ext}"
@@ -126,7 +127,8 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                 'padded': global_padded_packets,
                 'first': first_time,
                 'last': last_time,
-                'infiles': current_infiles.copy()
+                'infiles': current_infiles.copy(),
+                'split_reason': current_split_reason
             })
             out_f = None
 
@@ -146,21 +148,23 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                 # Check for time gap and heading gap
                 current_first_time, current_heading = get_file_metadata(infile)
                 
-                split_reason = None
+                split_reason_text = None
                 
                 if i > 0:
                     if last_time is not None and current_first_time != datetime.datetime.max:
                         gap_sec = (current_first_time - last_time).total_seconds()
                         if gap_sec > max_gap_seconds:
-                            split_reason = "time"
+                            split_reason_text = f"Time Gap: {gap_sec:.1f}s"
                             
-                    if previous_heading is not None and current_heading is not None:
+                    if split_reason_text is None and previous_heading is not None and current_heading is not None:
                         # Shortest angular difference between two headings
                         heading_diff = abs((current_heading - previous_heading + 180) % 360 - 180)
                         if heading_diff > max_heading_gap:
-                            split_reason = "heading"
+                            import math
+                            error_m = survey_range * math.sin(math.radians(heading_diff))
+                            split_reason_text = f"Heading Change: {heading_diff:.2f}° (Prevented ~{error_m:.1f}m of geometric target displacement at {survey_range}m range)"
 
-                if split_reason:
+                if split_reason_text:
                     # Gap detected! Close current file and start a new one.
                     close_current_file()
                     file_index += 1
@@ -172,6 +176,7 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                     first_time = None
                     last_time = None
                     current_infiles = []
+                    current_split_reason = split_reason_text
                     
                     current_out_path = get_out_path(file_index)
                     out_f = open(current_out_path, 'wb')
@@ -232,13 +237,16 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
         
         # Generate master report
         report_path = f"{base}_report.txt"
-        with open(report_path, 'w') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write("HiSAS Offline XTF Merger - Processing Report\n")
             f.write("="*50 + "\n\n")
             f.write(f"Total input files processed: {total_files}\n")
             f.write(f"Total merged files generated: {len(generated_files)}\n\n")
             
             for gen in generated_files:
+                if gen['split_reason']:
+                    f.write(f"--- Split triggered by: {gen['split_reason']} ---\n\n")
+                
                 f.write(f"Output File: {os.path.basename(gen['path'])}\n")
                 f.write(f"  Total output sonar pings: {gen['pings']}\n")
                 if pad_to_size:
