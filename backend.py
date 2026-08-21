@@ -92,7 +92,7 @@ def find_max_packet_size(file_paths, progress_callback=None):
 def sort_files_by_timestamp(file_paths):
     return sorted(file_paths, key=get_first_timestamp)
 
-def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0, max_heading_gap=0.1, survey_range=200.0):
+def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=None, max_gap_seconds=5.0, max_heading_gap=0.1, survey_range=200.0, dry_run=False):
     if not infiles:
         return False, "No files provided."
         
@@ -119,22 +119,32 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
         
     def close_current_file():
         nonlocal out_f
+        headings = [f['heading'] for f in current_infiles if f['heading'] is not None]
+        avg_h = sum(headings) / len(headings) if headings else None
+        min_h = min(headings) if headings else None
+        max_h = max(headings) if headings else None
+        
         if out_f:
             out_f.close()
-            generated_files.append({
-                'path': get_out_path(file_index),
-                'pings': global_ping_count,
-                'padded': global_padded_packets,
-                'first': first_time,
-                'last': last_time,
-                'infiles': current_infiles.copy(),
-                'split_reason': current_split_reason
-            })
-            out_f = None
+            
+        generated_files.append({
+            'path': get_out_path(file_index),
+            'pings': global_ping_count,
+            'padded': global_padded_packets,
+            'first': first_time,
+            'last': last_time,
+            'infiles': current_infiles.copy(),
+            'split_reason': current_split_reason,
+            'avg_heading': avg_h,
+            'min_heading': min_h,
+            'max_heading': max_h
+        })
+        out_f = None
 
     try:
         current_out_path = get_out_path(file_index)
-        out_f = open(current_out_path, 'wb')
+        if not dry_run:
+            out_f = open(current_out_path, 'wb')
         
         previous_heading = None
         
@@ -179,13 +189,14 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                     current_split_reason = split_reason_text
                     
                     current_out_path = get_out_path(file_index)
-                    out_f = open(current_out_path, 'wb')
+                    if not dry_run:
+                        out_f = open(current_out_path, 'wb')
                 
                 if current_heading is not None:
                     previous_heading = current_heading
 
                 # Write file header if this is the first file in the CURRENT output file
-                if len(current_infiles) == 0:
+                if len(current_infiles) == 0 and out_f:
                     out_f.write(file_header)
                     
                 current_infiles.append({'name': os.path.basename(infile), 'heading': current_heading})
@@ -211,25 +222,28 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                                 first_time = dt
                             last_time = dt
                                 
-                        record_payload = bytearray(record_payload)
-                        struct.pack_into('<II', record_payload, 10, global_event_count, global_ping_count)
+                        if not dry_run:
+                            record_payload = bytearray(record_payload)
+                            struct.pack_into('<II', record_payload, 10, global_event_count, global_ping_count)
+                        
                         global_ping_count += 1
                         global_event_count += 1
                     
-                    out_f.seek(0, os.SEEK_END)
-                    if pad_to_size and header['numbytes'] < pad_to_size:
-                        padding_len = pad_to_size - header['numbytes']
-                        in_f.seek(header['pos'])
-                        orig_header = bytearray(in_f.read(14))
-                        struct.pack_into('<I', orig_header, 10, pad_to_size)
-                        out_f.write(orig_header)
-                        out_f.write(record_payload)
-                        out_f.write(b'\x00' * padding_len)
-                        global_padded_packets += 1
-                    else:
-                        in_f.seek(header['pos'])
-                        out_f.write(in_f.read(14))
-                        out_f.write(record_payload)
+                    if not dry_run:
+                        out_f.seek(0, os.SEEK_END)
+                        if pad_to_size and header['numbytes'] < pad_to_size:
+                            padding_len = pad_to_size - header['numbytes']
+                            in_f.seek(header['pos'])
+                            orig_header = bytearray(in_f.read(14))
+                            struct.pack_into('<I', orig_header, 10, pad_to_size)
+                            out_f.write(orig_header)
+                            out_f.write(record_payload)
+                            out_f.write(b'\x00' * padding_len)
+                            global_padded_packets += 1
+                        else:
+                            in_f.seek(header['pos'])
+                            out_f.write(in_f.read(14))
+                            out_f.write(record_payload)
                     
                     in_f.seek(header['pos'] + header['numbytes'])
         
@@ -240,6 +254,8 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write("HiSAS Offline XTF Merger - Processing Report\n")
             f.write("="*50 + "\n\n")
+            if dry_run:
+                f.write("*** DRY RUN MODE: No XTF files were generated ***\n\n")
             f.write(f"Total input files processed: {total_files}\n")
             f.write(f"Total merged files generated: {len(generated_files)}\n\n")
             
@@ -248,11 +264,19 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                     f.write(f"--- Split triggered by: {gen['split_reason']} ---\n\n")
                 
                 f.write(f"Output File: {os.path.basename(gen['path'])}\n")
+                
+                if gen['avg_heading'] is not None:
+                    f.write(f"  Heading Stats - Avg: {gen['avg_heading']:.2f}° | Min: {gen['min_heading']:.2f}° | Max: {gen['max_heading']:.2f}°\n")
+                
                 f.write(f"  Total output sonar pings: {gen['pings']}\n")
-                if pad_to_size:
+                
+                if dry_run:
+                    f.write(f"  Packets zero-padded: Skipped (Dry Run)\n")
+                elif pad_to_size:
                     f.write(f"  Packets zero-padded to uniform size ({pad_to_size} bytes): {gen['padded']}\n")
                 else:
                     f.write("  Packets zero-padded: 0 (Normalization disabled)\n")
+                    
                 f.write(f"  First ping timestamp: {gen['first']}\n")
                 f.write(f"  Last ping timestamp: {gen['last']}\n")
                 f.write("  Input files included:\n")
@@ -261,6 +285,8 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                     f.write(f"    - {src['name']} (Heading: {h_str})\n")
                 f.write("\n")
         
+        if dry_run:
+            return True, f"Dry Run completed! Analyzed {len(generated_files)} file splits."
         return True, f"Success! Generated {len(generated_files)} files."
     except Exception as e:
         if out_f:

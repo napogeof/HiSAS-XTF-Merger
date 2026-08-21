@@ -1,4 +1,4 @@
-# HiSAS Offline XTF Line Merger
+# HiSAS Offline XTF Line Merger v11.0
 
 **Merge hundreds of short HiSAS XTF files into continuous survey lines — without resampling or rasterizing the raw acoustic data.**
 
@@ -32,11 +32,14 @@ When these differing files are concatenated, downstream XTF parsers lose byte-sy
 ### 3. Time Gap Splitting
 The tool reads XTF ping timestamps. If it detects a chronological gap exceeding your specified limit (e.g., AUV surface time or missing data), it will automatically split the file rather than forcing downstream software to stretch the mosaic over the void.
 
-### 4. 100% Lossless Pings
+### 4. Fast "Dry Run" Mode (Report Only)
+Unsure what thresholds to use? Enable the "Generate Report Only (Dry Run)" option. The tool will bypass the physical creation of large XTF files and rapidly scan the headers instead. Within seconds, it generates the full Master Report so you can preview exactly where splits will occur, tweak your thresholds, and commit when ready.
+
+### 5. 100% Lossless Pings
 The application preserves the raw acoustic payloads precisely as they were acquired, including overlapping pings during AUV turns. No decimation or spatial interpolation is performed.
 
-### 5. Advanced Processing Reports
-Automatically generates a comprehensive `_report.txt` that tracks output files, ping counts, time boundaries, and specific split triggers. It explicitly logs the mathematical target displacement prevented during heading splits!
+### 6. Advanced Processing Reports
+Automatically generates a comprehensive `_report.txt` that tracks output files, ping counts, time boundaries, and specific split triggers. It explicitly logs the mathematical target displacement prevented during heading splits, and calculates Min, Max, and Average heading statistics per file!
 
 ---
 
@@ -51,7 +54,7 @@ If you want to modify the source code and recompile:
 
 ```powershell
 pip install pyinstaller
-pyinstaller --noconsole --onefile --name HiSAS_Merger_v10 gui.py
+pyinstaller --noconsole --onefile --name HiSAS_Merger_v11 gui.py
 ```
 
 ---

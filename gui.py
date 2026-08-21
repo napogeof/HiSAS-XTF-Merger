@@ -8,8 +8,8 @@ from backend import sort_files_by_timestamp, merge_xtf_files, find_max_packet_si
 class HiSASMergerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("HiSAS Offline XTF Line Merger v10.0")
-        self.root.geometry("600x500")
+        self.root.title("HiSAS Offline XTF Line Merger v11.0")
+        self.root.geometry("600x530")
         
         self.input_files = []
         self.output_file = ""
@@ -93,17 +93,22 @@ class HiSASMergerApp:
         # Initialize error label
         self.update_error_label()
         
+        # Dry Run Option
+        self.var_dry_run = tk.BooleanVar(value=False)
+        self.chk_dry_run = ttk.Checkbutton(self.merge_tab, text="Generate Report Only (Dry Run - No XTF files created)", variable=self.var_dry_run)
+        self.chk_dry_run.grid(row=8, column=0, columnspan=3, pady=(5, 0), sticky='w', padx=10)
+
         # Merge Button
         self.btn_merge = ttk.Button(self.merge_tab, text="MERGE FILES", command=self.start_merge)
-        self.btn_merge.grid(row=8, column=0, columnspan=3, pady=20)
+        self.btn_merge.grid(row=9, column=0, columnspan=3, pady=20)
         
         # Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.merge_tab, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=9, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
+        self.progress_bar.grid(row=10, column=0, columnspan=3, sticky='ew', padx=5, pady=5)
         
         self.lbl_status = ttk.Label(self.merge_tab, text="Ready.")
-        self.lbl_status.grid(row=10, column=0, columnspan=3, sticky='w', padx=5)
+        self.lbl_status.grid(row=11, column=0, columnspan=3, sticky='w', padx=5)
 
     def update_error_label(self, *args):
         try:
@@ -149,7 +154,10 @@ HiSAS systems often dynamically change the acoustic packet payload sizes during 
 When these differing files are concatenated, downstream XTF parsers lose byte-synchronization and severely corrupt the mosaic.
 If the "Normalize Packet Sizes" option is enabled, the tool scans all files to find the maximum packet size, and then seamlessly zero-pads all smaller packets in the merged output. This tricks parsers into seeing a uniform file without altering any real acoustic data.
 
-5. NAVIGATION AND ACOUSTIC DATA
+6. REPORT ONLY (DRY RUN)
+Checking the 'Generate Report Only (Dry Run)' option bypasses the physical creation of the XTF output files. The tool rapidly analyzes the headers and immediately generates the `_report.txt` file, allowing you to quickly test your Time Gap and Heading thresholds without waiting for large file copying.
+
+7. NAVIGATION AND ACOUSTIC DATA
 The application does not perform spatial interpolation, image mosaicking, pixel blending, or acoustic resampling.
 For retained pings, the original acquisition information is preserved, including:
 * Acoustic samples
@@ -256,7 +264,9 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
 
     def run_merge_thread(self):
         pad_to_size = None
-        if self.var_normalize.get():
+        is_dry = self.var_dry_run.get()
+        
+        if self.var_normalize.get() and not is_dry:
             self.root.after(0, lambda: self.lbl_status.config(text="Pass 1: Scanning files for maximum packet size..."))
             pad_to_size = find_max_packet_size(self.input_files, progress_callback=self.update_progress)
             
@@ -264,7 +274,7 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
         max_heading = self.var_max_heading.get()
         survey_rng = self.var_range.get()
             
-        self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Merging files..."))
+        self.root.after(0, lambda: self.lbl_status.config(text="Pass 2: Analyzing and Merging files..." if not is_dry else "Dry Run: Analyzing files..."))
         success, message = merge_xtf_files(
             self.input_files, 
             self.output_file, 
@@ -272,7 +282,8 @@ Source Code & Updates: https://github.com/napogeof/HiSAS-XTF-Merger
             pad_to_size=pad_to_size,
             max_gap_seconds=max_gap,
             max_heading_gap=max_heading,
-            survey_range=survey_rng
+            survey_range=survey_rng,
+            dry_run=is_dry
         )
         
         def finish():
