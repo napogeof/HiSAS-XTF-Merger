@@ -249,6 +249,17 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
         
         close_current_file()
         
+        # Calculate global heading stats across all input files
+        all_headings = []
+        for gen in generated_files:
+            for f in gen['infiles']:
+                if f['heading'] is not None:
+                    all_headings.append(f['heading'])
+                    
+        global_avg = sum(all_headings) / len(all_headings) if all_headings else None
+        global_min = min(all_headings) if all_headings else None
+        global_max = max(all_headings) if all_headings else None
+        
         # Generate master report
         report_path = f"{base}_report.txt"
         with open(report_path, 'w', encoding='utf-8') as f:
@@ -258,6 +269,12 @@ def merge_xtf_files(infiles, base_outfile, progress_callback=None, pad_to_size=N
                 f.write("*** DRY RUN MODE: No XTF files were generated ***\n\n")
             f.write(f"Total input files processed: {total_files}\n")
             f.write(f"Total merged files generated: {len(generated_files)}\n\n")
+            
+            if global_avg is not None:
+                f.write(f"Global Heading Stats (Across All Files):\n")
+                f.write(f"  Avg: {global_avg:.2f}° | Min: {global_min:.2f}° | Max: {global_max:.2f}°\n")
+                f.write(f"  Maximum Angular Variance: {(global_max - global_min):.2f}°\n\n")
+            f.write("="*50 + "\n\n")
             
             for gen in generated_files:
                 if gen['split_reason']:
