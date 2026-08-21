@@ -8,7 +8,7 @@ from backend import sort_files_by_timestamp, merge_xtf_files, find_max_packet_si
 class HiSASMergerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("HiSAS Offline XTF Line Merger")
+        self.root.title("HiSAS Offline XTF Line Merger v10.0")
         self.root.geometry("600x500")
         
         self.input_files = []
@@ -167,7 +167,7 @@ The purpose of the application is to reorganize the original acquisition into a 
         txt.pack(fill='both', expand=True)
 
     def setup_readme_tab(self):
-        readme_text = """INSTRUCTIONS
+        readme_text = """INSTRUCTIONS (v10.0)
 
 1. Select XTF files
 Go to the 'Merge XTF Files' tab.
@@ -182,14 +182,15 @@ Click 'MERGE FILES'.
 The application will:
 1. Sort the input files chronologically.
 2. Read the XTF records sequentially.
-3. Preserve the original acoustic payloads.
-4. Intelligently split output files if large time gaps are detected.
+3. Preserve the original acoustic payloads precisely.
+4. Intelligently split output files if large time gaps or significant heading changes are detected.
 5. Rebuild continuous ping/event numbering per output file.
-6. Write the resulting continuous XTF(s).
+6. Zero-pad acoustic packets if "Normalize Packet Sizes" is enabled (preventing downstream parser crashes).
+7. Write the resulting continuous XTF(s).
 
 4. Processing report
 A processing report will be generated next to the output XTF.
-The report should be retained with the processed data as a record of the merge operation.
+The report explicitly logs file triggers (Time Gap vs Heading Change) and quantifies the prevented target displacement error. It should be retained with the processed data.
 
 IMPORTANT
 
